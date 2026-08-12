@@ -1,62 +1,155 @@
+import Link from "next/link";
+import { Radio } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase";
 import CreateAppForm from "./CreateAppForm";
-import FirebaseConfigForm from "./FirebaseConfigForm";
-import UpdateFcmForm from "./UpdateFcmForm";
+import { ThemeToggle } from "@/components/theme-toggle";
+import SignOutButton from "@/app/(app)/SignOutButton";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
+interface AppRow {
+  id: string;
+  name: string;
+  public_app_key: string;
+  fcm_service_account: unknown | null;
+}
+
 export default async function AppsPage() {
-  const { data: apps } = await supabaseAdmin()
-    .from("apps")
-    .select("id, name, public_app_key, fcm_service_account, firebase_client_config, created_at")
-    .order("created_at", { ascending: false });
+  const db = supabaseAdmin();
+  const [{ data: apps }, { data: devices }] = await Promise.all([
+    db
+      .from("apps")
+      .select("id, name, public_app_key, fcm_service_account")
+      .order("created_at", { ascending: false }),
+    db.from("devices").select("app_id, subscribed, platform"),
+  ]);
+
+  // Aggregate device counts per app in JS (fine at the target scale).
+  const stats = new Map<
+    string,
+    { total: number; subscribed: number; platforms: Set<string> }
+  >();
+  for (const d of devices ?? []) {
+    const s =
+      stats.get(d.app_id) ??
+      { total: 0, subscribed: 0, platforms: new Set<string>() };
+    s.total += 1;
+    if (d.subscribed) s.subscribed += 1;
+    if (d.platform) s.platforms.add(d.platform);
+    stats.set(d.app_id, s);
+  }
+
+  const list = (apps ?? []) as AppRow[];
 
   return (
-    <div>
-      <h1 style={{ fontSize: 24 }}>Apps</h1>
-      <CreateAppForm />
+    <div className="flex min-h-screen flex-col">
+      <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 md:px-6">
+        <div className="flex items-center gap-2">
+          <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Radio className="size-4" />
+          </div>
+          <span className="font-semibold">Push Dashboard</span>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <ThemeToggle />
+          <SignOutButton />
+        </div>
+      </header>
 
-      <div style={{ display: "grid", gap: 12 }}>
-        {(apps ?? []).map((a) => {
-          const fbc = (a.firebase_client_config as { android?: unknown; ios?: unknown } | null) ?? {};
-          return (
-            <div key={a.id} style={row}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{a.name}</div>
-                  <div style={{ fontFamily: "monospace", fontSize: 12, color: "#8b93a3" }}>
-                    {a.public_app_key}
-                  </div>
-                </div>
-                <div style={{ textAlign: "right", fontSize: 12 }}>
-                  <div style={{ color: a.fcm_service_account ? "#7ee787" : "#ffb457" }}>
-                    {a.fcm_service_account ? "FCM (send) ✓" : "FCM missing"}
-                  </div>
-                  <div style={{ color: fbc.android || fbc.ios ? "#7ee787" : "#8b93a3" }}>
-                    Firebase client: {fbc.android ? "Android ✓ " : ""}{fbc.ios ? "iOS ✓" : ""}
-                    {!fbc.android && !fbc.ios ? "not set" : ""}
-                  </div>
-                </div>
-              </div>
-              <div style={{ borderTop: "1px solid #1c2333", marginTop: 12, paddingTop: 10 }}>
-                <UpdateFcmForm appId={a.id} hasFcm={!!a.fcm_service_account} />
-                <FirebaseConfigForm appId={a.id} hasAndroid={!!fbc.android} hasIos={!!fbc.ios} />
-              </div>
-            </div>
-          );
-        })}
-        {(!apps || apps.length === 0) && (
-          <p style={{ color: "#8b93a3" }}>No apps yet. Create one above.</p>
+      <main className="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>
+            <p className="text-sm text-muted-foreground">
+              Select an app to open its dashboard.
+            </p>
+          </div>
+          <CreateAppForm />
+        </div>
+
+        {list.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              No apps yet. Create one to get started.
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Platforms</TableHead>
+                    <TableHead className="text-right">Total devices</TableHead>
+                    <TableHead className="text-right">Subscribed</TableHead>
+                    <TableHead>Sending (FCM)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {list.map((a) => {
+                    const s = stats.get(a.id);
+                    const platforms = s ? [...s.platforms] : [];
+                    return (
+                      <TableRow key={a.id} className="cursor-pointer">
+                        <TableCell>
+                          <Link
+                            href={`/apps/${a.id}/dashboard`}
+                            className="block font-medium hover:underline"
+                          >
+                            {a.name}
+                          </Link>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {a.public_app_key}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {platforms.length ? (
+                              platforms.map((p) => (
+                                <Badge key={p} variant="secondary" className="capitalize">
+                                  {p}
+                                </Badge>
+                              ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {s?.total ?? 0}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {s?.subscribed ?? 0}
+                        </TableCell>
+                        <TableCell>
+                          {a.fcm_service_account ? (
+                            <Badge>Configured</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              Not set
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         )}
-      </div>
+      </main>
     </div>
   );
 }
-
-const row: React.CSSProperties = {
-  display: "block",
-  padding: "14px 16px",
-  background: "#131826",
-  border: "1px solid #232a3b",
-  borderRadius: 10,
-};

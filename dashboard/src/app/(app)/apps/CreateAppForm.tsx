@@ -1,23 +1,37 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
+import { Plus } from "lucide-react";
 import { createAppAction, CreateAppResult } from "@/app/actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const initial: CreateAppResult = { ok: false };
 
 function SubmitBtn() {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} style={btn}>
+    <Button type="submit" disabled={pending}>
+      <Plus className="h-4 w-4" />
       {pending ? "Creating…" : "Create app"}
-    </button>
+    </Button>
   );
 }
 
 export default function CreateAppForm() {
   const [state, action] = useFormState(createAppAction, initial);
+  const [open, setOpen] = useState(false);
   const router = useRouter();
 
   // Refresh the app list once a new app is created.
@@ -25,66 +39,83 @@ export default function CreateAppForm() {
     if (state.ok) router.refresh();
   }, [state.ok, router]);
 
-  return (
-    <form action={action} style={card}>
-      <h3 style={{ marginTop: 0 }}>New app</h3>
-      <input name="name" placeholder="App name" style={input} required />
-      <label style={{ fontSize: 12, color: "#8b93a3", display: "block", marginBottom: 6 }}>
-        FCM service-account JSON (optional now — you can add it later per app)
-      </label>
-      <input
-        type="file"
-        name="fcm_service_account"
-        accept=".json,application/json"
-        style={input}
-      />
-      <SubmitBtn />
+  if (!open) {
+    return (
+      <Button onClick={() => setOpen(true)}>
+        <Plus className="h-4 w-4" />
+        New app
+      </Button>
+    );
+  }
 
-      {state.error && <p style={{ color: "#ff6b6b" }}>{state.error}</p>}
-      {state.ok && state.secretKey && (
-        <div style={notice}>
-          <p style={{ margin: "0 0 8px", color: "#7ee787" }}>
-            App created! Save these keys now — the secret won&apos;t be shown again.
-          </p>
-          <p style={mono}><b>Public App Key:</b> {state.publicKey}</p>
-          <p style={mono}><b>Secret REST Key:</b> {state.secretKey}</p>
-        </div>
-      )}
-    </form>
+  return (
+    <Card className="w-full max-w-xl">
+      <CardHeader>
+        <CardTitle>New app</CardTitle>
+        <CardDescription>
+          Create an app and (optionally) attach its FCM service-account JSON now.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form action={action} className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="app-name">App name</Label>
+            <Input id="app-name" name="name" placeholder="My App" required />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="app-fcm">
+              FCM service-account JSON{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional — add later per app)
+              </span>
+            </Label>
+            <Input
+              id="app-fcm"
+              type="file"
+              name="fcm_service_account"
+              accept=".json,application/json"
+              className="cursor-pointer file:mr-3 file:text-muted-foreground"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <SubmitBtn />
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+
+          {state.error && (
+            <Alert variant="destructive">
+              <AlertDescription>{state.error}</AlertDescription>
+            </Alert>
+          )}
+          {state.ok && state.secretKey && (
+            <Alert>
+              <AlertTitle className="text-primary">
+                App created — save these keys now
+              </AlertTitle>
+              <AlertDescription className="grid gap-2">
+                <p className="text-muted-foreground">
+                  The secret REST key won&apos;t be shown again.
+                </p>
+                <div className="grid gap-1">
+                  <span className="text-xs font-medium">Public App Key</span>
+                  <code className="break-all rounded bg-muted px-2 py-1 text-xs">
+                    {state.publicKey}
+                  </code>
+                </div>
+                <div className="grid gap-1">
+                  <span className="text-xs font-medium">Secret REST Key</span>
+                  <code className="break-all rounded bg-muted px-2 py-1 text-xs">
+                    {state.secretKey}
+                  </code>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+        </form>
+      </CardContent>
+    </Card>
   );
 }
-
-const card: React.CSSProperties = {
-  background: "#131826",
-  border: "1px solid #232a3b",
-  borderRadius: 12,
-  padding: 20,
-  marginBottom: 24,
-};
-const input: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  marginBottom: 12,
-  background: "#0b0f19",
-  border: "1px solid #2a3346",
-  borderRadius: 8,
-  color: "#e6e8ee",
-  boxSizing: "border-box",
-};
-const btn: React.CSSProperties = {
-  padding: "9px 16px",
-  background: "#4f7cff",
-  border: "none",
-  borderRadius: 8,
-  color: "white",
-  fontWeight: 600,
-  cursor: "pointer",
-};
-const notice: React.CSSProperties = {
-  marginTop: 14,
-  padding: 12,
-  background: "#0b0f19",
-  border: "1px solid #2a3346",
-  borderRadius: 8,
-};
-const mono: React.CSSProperties = { fontFamily: "monospace", fontSize: 12, wordBreak: "break-all", margin: "4px 0" };
