@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseAdmin } from "@/lib/supabase";
 import { currentUser } from "@/lib/supabase-server";
 import { createApp, setAppFcmCredentials } from "@/lib/apps";
-import { dispatchNotification } from "@/lib/delivery";
+import { dispatchAndFinalize } from "@/lib/delivery";
 import {
   parseGoogleServicesJson,
   parseGoogleServiceInfoPlist,
@@ -155,7 +155,11 @@ export interface SendResult {
   failed?: number;
 }
 
-/** Send/schedule a notification from the dashboard. */
+/**
+ * Send/schedule a notification from the dashboard.
+ * The rich compose form serializes its whole state to a single `payload` JSON
+ * field, so this action reads one structured object rather than many flat keys.
+ */
 export async function sendNotificationAction(
   _prev: unknown,
   formData: FormData
@@ -164,70 +168,98 @@ export async function sendNotificationAction(
     await requireAuth();
     const db = supabaseAdmin();
 
-    const appId = String(formData.get("app_id") || "");
-    const title = String(formData.get("title") || "").trim();
-    const body = String(formData.get("body") || "").trim();
+    let p: any;
+    try {
+      p = JSON.parse(String(formData.get("payload") || "{}"));
+    } catch {
+      return { ok: false, error: "Invalid form payload" };
+    }
+
+    const appId = String(p.app_id || "");
+    const title = String(p.title || "").trim();
+    const body = String(p.body || "").trim();
     if (!appId || !title || !body) return { ok: false, error: "app, title, body required" };
 
-    const targetType = String(formData.get("target_type") || "all") as
-      | "all"
-      | "tags"
-      | "external_ids";
+    const targetType = (["all", "tags", "external_ids"].includes(p.target_type)
+      ? p.target_type
+      : "all") as "all" | "tags" | "external_ids";
 
-    let targetFilter: any = {};
-    if (targetType === "tags") {
-      const raw = String(formData.get("target_filter") || "{}");
-      try {
-        targetFilter = JSON.parse(raw);
-      } catch {
-        return { ok: false, error: "Invalid tags filter JSON (e.g. {\"city\":\"lahore\"})" };
-      }
-    } else if (targetType === "external_ids") {
-      targetFilter = String(formData.get("target_filter") || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+    let targetFilter: any = targetType === "external_ids" ? [] : {};
+    if (targetType === "tags" && p.target_filter && typeof p.target_filter === "object") {
+      targetFilter = p.target_filter;
+    } else if (targetType === "external_ids" && Array.isArray(p.target_filter)) {
+      targetFilter = p.target_filter.map((s: unknown) => String(s).trim()).filter(Boolean);
     }
 
-    let data: Record<string, string> = {};
-    const dataRaw = String(formData.get("data") || "").trim();
-    if (dataRaw) {
-      try {
-        data = JSON.parse(dataRaw);
-      } catch {
-        return { ok: false, error: "Invalid custom data JSON" };
-      }
-    }
+    const platforms: string[] =
+      Array.isArray(p.platforms) && p.platforms.length ? p.platforms : ["android", "ios"];
 
-    const scheduledRaw = String(formData.get("scheduled_at") || "").trim();
-    const scheduledAt = scheduledRaw ? new Date(scheduledRaw) : null;
-    const isScheduled = scheduledAt !== null && scheduledAt.getTime() > Date.now();
+    const data: Record<string, string> =
+      p.data && typeof p.data === "object" && !Array.isArray(p.data) ? p.data : {};
+    const options = p.options && typeof p.options === "object" ? p.options : {};
+
+    // Delivery mode
+    const mode = (["now", "fixed", "timezone"].includes(p?.delivery?.mode)
+      ? p.delivery.mode
+      : "now") as "now" | "fixed" | "timezone";
+
+    let status = "sending";
+    let scheduledAtIso: string | null = null;
+    let tzLocal: string | null = null;
+    let tzDate: string | null = null;
+
+    if (mode === "fixed") {
+      const at = p.delivery.scheduled_at ? new Date(p.delivery.scheduled_at) : null;
+      if (at && at.getTime() > Date.now()) {
+        status = "scheduled";
+        scheduledAtIso = at.toISOString();
+      } else {
+        status = "sending"; // past/empty time → send now
+      }
+    } else if (mode === "timezone") {
+      if (!p.delivery.tz_send_local || !p.delivery.tz_send_date) {
+        return { ok: false, error: "Timezone delivery needs a date and local time" };
+      }
+      status = "scheduling";
+      tzLocal = String(p.delivery.tz_send_local);
+      tzDate = String(p.delivery.tz_send_date);
+    }
 
     const { data: notif, error } = await db
       .from("notifications")
       .insert({
         app_id: appId,
+        name: p.name ? String(p.name).trim() : null,
         title,
+        subtitle: p.subtitle ? String(p.subtitle).trim() : null,
         body,
-        image_url: String(formData.get("image_url") || "").trim() || null,
-        launch_url: String(formData.get("launch_url") || "").trim() || null,
+        image_url: p.image_url ? String(p.image_url).trim() : null,
+        launch_url: p.launch_url ? String(p.launch_url).trim() : null,
         data,
+        platforms,
+        options,
         target_type: targetType,
         target_filter: targetFilter,
-        status: isScheduled ? "scheduled" : "sending",
-        scheduled_at: isScheduled ? scheduledAt!.toISOString() : null,
+        status,
+        delivery_mode: mode === "fixed" && status === "sending" ? "now" : mode,
+        scheduled_at: scheduledAtIso,
+        tz_send_local: tzLocal,
+        tz_send_date: tzDate,
       })
       .select("*")
       .single();
 
     if (error) return { ok: false, error: error.message };
 
-    revalidatePath("/notifications");
-    if (isScheduled) return { ok: true, status: "scheduled" };
+    revalidatePath(`/apps/${appId}/notifications`);
 
+    if (status === "scheduled") return { ok: true, status: "scheduled" };
+    if (status === "scheduling") return { ok: true, status: "scheduled" };
+
+    // Send now
     const { data: app } = await db.from("apps").select("*").eq("id", appId).single();
-    const result = await dispatchNotification(notif as any, app as AppRow);
-    revalidatePath("/notifications");
+    const result = await dispatchAndFinalize(notif as any, app as AppRow);
+    revalidatePath(`/apps/${appId}/notifications`);
     return { ok: true, status: "completed", ...result };
   } catch (e: any) {
     return { ok: false, error: e.message };

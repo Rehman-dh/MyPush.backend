@@ -1,11 +1,5 @@
 {
   "framework": "nextjs",
   "buildCommand": "next build",
-  "installCommand": "npm install",
-  "crons": [
-    {
-      "path": "/api/cron/dispatch",
-      "schedule": "* * * * *"
-    }
-  ]
+  "installCommand": "npm install"
 }

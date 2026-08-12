@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { appFromSecretKey } from "@/lib/auth";
-import { dispatchNotification } from "@/lib/delivery";
+import { dispatchAndFinalize } from "@/lib/delivery";
 
 export const runtime = "nodejs";
 export const maxDuration = 60; // Vercel: allow up to 60s for send-now batches
@@ -33,16 +33,24 @@ export async function POST(req: NextRequest) {
   const scheduledAt = b.scheduled_at ? new Date(b.scheduled_at) : null;
   const isScheduled = scheduledAt !== null && scheduledAt.getTime() > Date.now();
 
+  const platforms =
+    Array.isArray(b.platforms) && b.platforms.length ? b.platforms : ["android", "ios"];
+
   const insert = {
     app_id: app.id,
+    name: b.name ? String(b.name) : null,
     title: String(b.title),
+    subtitle: b.subtitle ? String(b.subtitle) : null,
     body: String(b.body),
     image_url: b.image_url ?? null,
     launch_url: b.launch_url ?? null,
     data: b.data ?? {},
+    platforms,
+    options: b.options && typeof b.options === "object" ? b.options : {},
     target_type: targetType,
     target_filter: b.target_filter ?? (targetType === "external_ids" ? [] : {}),
     status: isScheduled ? "scheduled" : "sending",
+    delivery_mode: isScheduled ? "fixed" : "now",
     scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
   };
 
@@ -61,7 +69,7 @@ export async function POST(req: NextRequest) {
 
   // Send now
   try {
-    const result = await dispatchNotification(notif as any, app);
+    const result = await dispatchAndFinalize(notif as any, app);
     return NextResponse.json({ id: notif.id, status: "completed", ...result });
   } catch (e: any) {
     return NextResponse.json({ id: notif.id, status: "failed", error: e.message }, { status: 500 });

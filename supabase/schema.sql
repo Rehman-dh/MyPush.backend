@@ -50,25 +50,55 @@ create index if not exists idx_devices_tags_gin    on public.devices using gin (
 create table if not exists public.notifications (
   id             uuid primary key default gen_random_uuid(),
   app_id         uuid not null references public.apps(id) on delete cascade,
+  name           text,                                  -- internal/campaign name (list "Name"; falls back to title)
   title          text not null,
+  subtitle       text,                                  -- iOS subtitle
   body           text not null,
   image_url      text,
   launch_url     text,
   data           jsonb not null default '{}'::jsonb,
+  platforms      text[] not null default '{android,ios}',  -- platform targeting
+  options        jsonb not null default '{}'::jsonb,    -- { ios:{}, android:{}, advanced:{}, buttons:[] }
   target_type    text not null check (target_type in ('all','tags','external_ids')),
   target_filter  jsonb not null default '{}'::jsonb,   -- tags: {"city":"lahore"} | external_ids: ["4821"]
   status         text not null default 'sending'
-                   check (status in ('scheduled','sending','completed','failed')),
-  scheduled_at   timestamptz,
+                   check (status in ('scheduled','scheduling','sending','completed','failed')),
+  delivery_mode  text not null default 'now'
+                   check (delivery_mode in ('now','fixed','timezone')),
+  scheduled_at   timestamptz,                           -- for delivery_mode='fixed'
+  tz_send_local  text,                                  -- for 'timezone': local time "HH:MM"
+  tz_send_date   date,                                  -- for 'timezone': target local date
+  tz_completed   jsonb not null default '[]'::jsonb,    -- timezones already dispatched (dedupe)
   sent_count     integer not null default 0,
   failed_count   integer not null default 0,
   clicked_count  integer not null default 0,
   created_at     timestamptz not null default now()
 );
 
+-- For existing databases: add the new columns / widen the status check.
+alter table public.notifications add column if not exists name          text;
+alter table public.notifications add column if not exists subtitle      text;
+alter table public.notifications add column if not exists platforms     text[] not null default '{android,ios}';
+alter table public.notifications add column if not exists options       jsonb not null default '{}'::jsonb;
+alter table public.notifications add column if not exists delivery_mode text not null default 'now';
+alter table public.notifications add column if not exists tz_send_local text;
+alter table public.notifications add column if not exists tz_send_date  date;
+alter table public.notifications add column if not exists tz_completed  jsonb not null default '[]'::jsonb;
+
+do $$ begin
+  alter table public.notifications drop constraint if exists notifications_status_check;
+  alter table public.notifications add constraint notifications_status_check
+    check (status in ('scheduled','scheduling','sending','completed','failed'));
+  alter table public.notifications drop constraint if exists notifications_delivery_mode_check;
+  alter table public.notifications add constraint notifications_delivery_mode_check
+    check (delivery_mode in ('now','fixed','timezone'));
+end $$;
+
 create index if not exists idx_notifications_app      on public.notifications (app_id, created_at desc);
 create index if not exists idx_notifications_schedule on public.notifications (status, scheduled_at)
   where status = 'scheduled';
+create index if not exists idx_notifications_tz       on public.notifications (status, delivery_mode)
+  where delivery_mode = 'timezone';
 
 -- ─────────────────────────────────────────────────────────────
 -- events: click (aur future engagement) tracking — detail table
