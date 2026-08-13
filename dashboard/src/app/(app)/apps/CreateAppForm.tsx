@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { createAppAction, CreateAppResult } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,14 @@ export default function CreateAppForm() {
                     {state.secretKey}
                   </code>
                 </div>
+                {state.appId && (
+                  <Button asChild className="mt-2 justify-self-start">
+                    <Link href={`/apps/${state.appId}/dashboard`}>
+                      Open {state.appName ?? "app"}
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
               </AlertDescription>
             </Alert>
           )}

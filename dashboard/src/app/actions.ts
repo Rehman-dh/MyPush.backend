@@ -31,6 +31,8 @@ async function readFileOrText(v: FormDataEntryValue | null): Promise<string> {
 export interface CreateAppResult {
   ok: boolean;
   error?: string;
+  appId?: string;
+  appName?: string;
   publicKey?: string;
   secretKey?: string;
 }
@@ -56,7 +58,13 @@ export async function createAppAction(
     }
     const app = await createApp(name, sa);
     revalidatePath("/apps");
-    return { ok: true, publicKey: app.public_app_key, secretKey: app.secret_rest_key };
+    return {
+      ok: true,
+      appId: app.id,
+      appName: app.name,
+      publicKey: app.public_app_key,
+      secretKey: app.secret_rest_key,
+    };
   } catch (e: any) {
     return { ok: false, error: e.message };
   }

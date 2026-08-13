@@ -19,14 +19,27 @@ export default async function AppScopedLayout({
   children: React.ReactNode;
   params: { appId: string };
 }) {
-  const { data: apps } = await supabaseAdmin()
+  const db = supabaseAdmin();
+  const { data: apps } = await db
     .from("apps")
     .select("id, name")
     .order("created_at", { ascending: false });
 
-  const list = apps ?? [];
-  const activeApp = list.find((a) => a.id === params.appId);
-  if (!activeApp) notFound();
+  let list = apps ?? [];
+  let activeApp = list.find((a) => a.id === params.appId);
+
+  if (!activeApp) {
+    // Authoritative fetch by id — guards against list read-lag right after
+    // an app is created, so a valid new app never flashes a 404.
+    const { data: one } = await db
+      .from("apps")
+      .select("id, name")
+      .eq("id", params.appId)
+      .maybeSingle();
+    if (!one) notFound();
+    activeApp = one;
+    if (!list.some((a) => a.id === one.id)) list = [one, ...list];
+  }
 
   return (
     <SidebarProvider>
