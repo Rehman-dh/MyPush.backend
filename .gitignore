@@ -25,6 +25,9 @@ example/.dart_tool/
 # my_push has its own repo (github.com/Rehman-dh/MyPush.Package) — exclude from backend repo
 /my_push/
 
+# my_push_android has its own repo (github.com/Rehman-dh/MyPush.Android) — exclude from backend repo
+/my_push_android/
+
 # OS / editor
 .DS_Store
 .idea/
