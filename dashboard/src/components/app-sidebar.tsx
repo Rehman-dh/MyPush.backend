@@ -9,6 +9,7 @@ import {
   ChevronsUpDown,
   LayoutDashboard,
   LayoutGrid,
+  Rocket,
   Send,
   Settings,
   Smartphone,
@@ -43,6 +44,7 @@ export interface AppSummary {
 
 const navItems = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { key: "setup", label: "Setup", icon: Rocket },
   { key: "compose", label: "Compose", icon: Send },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "devices", label: "Devices", icon: Smartphone },

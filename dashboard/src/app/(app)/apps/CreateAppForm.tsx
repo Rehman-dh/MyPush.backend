@@ -113,12 +113,19 @@ export default function CreateAppForm() {
                   </code>
                 </div>
                 {state.appId && (
-                  <Button asChild className="mt-2 justify-self-start">
-                    <Link href={`/apps/${state.appId}/dashboard`}>
-                      Open {state.appName ?? "app"}
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
-                  </Button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button asChild>
+                      <Link href={`/apps/${state.appId}/dashboard`}>
+                        Open {state.appName ?? "app"}
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href={`/apps/${state.appId}/setup`}>
+                        View setup guide
+                      </Link>
+                    </Button>
+                  </div>
                 )}
               </AlertDescription>
             </Alert>
