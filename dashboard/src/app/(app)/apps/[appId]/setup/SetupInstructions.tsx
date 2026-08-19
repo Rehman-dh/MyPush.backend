@@ -5,6 +5,7 @@ import { CheckCircle2, TriangleAlert } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { CodeBlock } from "@/components/ui/code-block";
+import { SDK_VERSIONS } from "@/lib/sdk-versions";
 
 function Step({
   n,
@@ -97,7 +98,7 @@ export default function SetupInstructions({
   my_push:
     git:
       url: https://github.com/Rehman-dh/MyPush.Package.git
-      ref: main`}
+      ref: ${SDK_VERSIONS.flutter}`}
             />
           </Step>
 
@@ -173,7 +174,7 @@ await MyPush.instance.setTags({'plan': 'premium', 'city': 'lahore'});`}
             <CodeBlock
               language="kotlin"
               code={`dependencies {
-    implementation("com.github.Rehman-dh:my_push_android:0.2.0")
+    implementation("com.github.Rehman-dh:my_push_android:${SDK_VERSIONS.android}")
 }`}
             />
           </Step>

@@ -31,6 +31,22 @@ There is no test suite in either project — verify with `npm run build` / `npx 
 
 After a schema change, the new columns must be applied by running the idempotent `alter table` statements in `supabase/schema.sql` in Supabase — sends will fail against a stale schema.
 
+## Git workflow
+
+**Dashboard/backend repo — never push to `main` directly.** Push all dashboard changes to a branch named **`optimization-work`** (create it if it doesn't exist, then keep using it). The owner reviews and merges into `main` from GitHub. Do not open PRs or merge yourself unless asked.
+
+This rule is **only** for the dashboard/backend repo. The nested SDK repos (`my_push/` → `MyPush.Package`, `my_push_android/` → `my_push_android`) are pushed to their own `main` as before — commit/push them separately.
+
+### SDK releases must stay version-safe and in sync with the Setup page
+
+The dashboard **Setup** page (`dashboard/src/app/(app)/apps/[appId]/setup/`) shows copy-paste integration steps per platform. Whenever you change an SDK's **public API that appears in those steps** (the `MyPush` facade methods, init signature, class names, dependency coordinates), you must, in the same round:
+
+1. **Cut a new immutable version** — bump the SDK version and create a new tag (Flutter: a git tag like `0.3.1`, consumed via `ref: "<tag>"`; Android: a git tag → JitPack `com.github.Rehman-dh:my_push_android:<tag>`). **Never move or rewrite an existing tag** — apps pinned to an old version must keep resolving to their exact old code, undisturbed.
+2. **Update that SDK's README** to the new version and API.
+3. **Bump `dashboard/src/lib/sdk-versions.ts`** — the single source of truth for the versions the Setup page renders. The Setup page always shows the **latest** version; it reads `SDK_VERSIONS.flutter` / `SDK_VERSIONS.android`, so this is the only place to edit. Then update the Setup step prose/snippets if the API shape changed.
+
+Consumers pin a version tag (never `ref: main`), so shipping a new version never breaks existing apps — they upgrade deliberately by bumping their pinned tag.
+
 ## Architecture — the parts that span multiple files
 
 ### Delivery pipeline (`dashboard/src/lib/delivery.ts`)
