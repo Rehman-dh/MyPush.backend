@@ -1,31 +1,31 @@
 # Notification SDK — Self-hosted Push Platform
 
-Apna OneSignal-jaisa push notification system. Directly FCM use karta hai (iOS bhi FCM→APNs relay se). OneSignal paid ho gaya, yeh uska self-hosted replacement hai.
+Your own OneSignal-style push notification system. It talks directly to FCM (iOS too, via an FCM→APNs relay). OneSignal went paid — this is a self-hosted replacement for it.
 
 ```
-├── SPECS.md            # Poora technical specification (single source of truth)
+├── SPECS.md            # Full technical specification (single source of truth)
 ├── supabase/
-│   └── schema.sql      # Postgres schema — Supabase SQL editor mein run karo
-├── dashboard/          # Next.js app (API + dashboard UI), Vercel pe deploy
+│   └── schema.sql      # Postgres schema — run it in the Supabase SQL editor
+├── dashboard/          # Next.js app (API + dashboard UI), deployed to Vercel
 └── my_push/            # Flutter SDK (private git package)
 ```
 
-## Teen hisse
+## Three parts
 
-1. **`my_push` Flutter SDK** — app ke andar: registration, tags, login, notification handling. Dekho [my_push/README.md](my_push/README.md).
+1. **`my_push` Flutter SDK** — inside the app: registration, tags, login, notification handling. See [my_push/README.md](my_push/README.md).
 2. **Backend API** — `dashboard/src/app/api/*` — devices, notifications, transactional send, cron dispatch.
 3. **Dashboard** — Next.js UI (compose, target, schedule, analytics).
 
 ## Quick Setup
 
 ### 1. Supabase
-- Supabase project banao → SQL editor mein [supabase/schema.sql](supabase/schema.sql) run karo.
-- Project settings se: `URL`, `anon key`, `service_role key` lo.
+- Create a Supabase project → run [supabase/schema.sql](supabase/schema.sql) in the SQL editor.
+- From project settings, grab: `URL`, `anon key`, `service_role key`.
 
 ### 2. Dashboard (`dashboard/`)
 ```bash
 cd dashboard
-cp .env.example .env.local     # values bharo
+cp .env.example .env.local     # fill in the values
 npm install
 npm run dev
 ```
@@ -35,27 +35,27 @@ npm run dev
 - `CRON_SECRET` = `openssl rand -hex 32`
 - `ADMIN_SETUP_TOKEN` = `openssl rand -hex 32`
 
-### 3. App banao + FCM creds
-Firebase Console → Project Settings → Service Accounts → **Generate new private key** (JSON download). Phir:
+### 3. Create an app + FCM credentials
+Firebase Console → Project Settings → Service Accounts → **Generate new private key** (downloads a JSON). Then:
 ```bash
 curl -X POST http://localhost:3000/api/apps \
   -H "X-Admin-Token: $ADMIN_SETUP_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name":"My App","fcm_service_account": <paste serviceAccount JSON> }'
 ```
-Response mein `public_app_key` (SDK ke liye) aur `secret_rest_key` (sending ke liye) milenge. **Secret key sirf ek baar dikhti hai.**
+The response returns `public_app_key` (for the SDK) and `secret_rest_key` (for sending). **The secret key is shown only once.**
 
-### 3b. Firebase client config (zero-config SDK — OneSignal jaisa)
-Taake app mein `flutterfire configure` / `google-services.json` na karna pare:
-- Dashboard → **Apps** → apni app → **Set up Firebase config**
-- Android ka `google-services.json` aur/ya iOS ka `GoogleService-Info.plist` **paste** karo (Firebase Console → Project Settings → Your apps se)
-- SDK ye config `GET /api/config` se le kar khud `Firebase.initializeApp()` kar leti hai
+### 3b. Firebase client config (zero-config SDK — OneSignal-style)
+So you don't have to run `flutterfire configure` / add `google-services.json` in the app:
+- Dashboard → **Apps** → your app → **Set up Firebase config**
+- **Paste** the Android `google-services.json` and/or the iOS `GoogleService-Info.plist` (from Firebase Console → Project Settings → Your apps)
+- The SDK fetches this config via `GET /api/config` and calls `Firebase.initializeApp()` itself
 
 ### 4. Flutter app
-`my_push` package add karo, sirf `public_app_key` + dashboard URL se initialize karo — app mein Firebase ki manual setup nahi chahiye. Details: [my_push/README.md](my_push/README.md).
+Add the `my_push` package and initialize it with just the `public_app_key` + dashboard URL — no manual Firebase setup is needed in the app. Details: [my_push/README.md](my_push/README.md).
 
 ### 5. Deploy (Vercel)
-`dashboard/` ko Vercel pe deploy karo. Env vars set karo. `vercel.json` mein cron (`/api/cron/dispatch` har minute) already hai.
+Deploy `dashboard/` to Vercel. Set the env vars. The cron (`/api/cron/dispatch` every minute) is already declared in `vercel.json`.
 
 ## Send test (curl)
 ```bash
@@ -85,9 +85,9 @@ curl -X POST http://localhost:3000/api/notifications \
 ```
 
 ## Dashboard UI
-- `/login` — Supabase Auth (email/password). User Supabase → Authentication → Users mein banao.
-- `/apps` — app banao, FCM service-account JSON upload, public/secret keys (secret sirf ek baar).
-- `/compose` — title/body/image/launch/data, target (All / Tags / External IDs), send now ya schedule.
+- `/login` — Supabase Auth (email/password). Create users in Supabase → Authentication → Users.
+- `/apps` — create an app, upload the FCM service-account JSON, public/secret keys (secret shown only once).
+- `/compose` — title/body/image/launch/data, target (All / Tags / External IDs), send now or schedule.
 - `/notifications` — list + sent/failed/clicks/CTR.
 
 ## Status
