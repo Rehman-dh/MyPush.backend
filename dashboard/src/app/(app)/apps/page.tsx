@@ -22,6 +22,7 @@ interface AppRow {
   name: string;
   public_app_key: string;
   fcm_service_account: unknown | null;
+  firebase_client_config: { android?: unknown; ios?: unknown } | null;
 }
 
 export default async function AppsPage() {
@@ -29,7 +30,7 @@ export default async function AppsPage() {
   const [{ data: apps }, { data: devices }] = await Promise.all([
     db
       .from("apps")
-      .select("id, name, public_app_key, fcm_service_account")
+      .select("id, name, public_app_key, fcm_service_account, firebase_client_config")
       .order("created_at", { ascending: false }),
     db.from("devices").select("app_id, subscribed, platform"),
   ]);
@@ -99,7 +100,14 @@ export default async function AppsPage() {
                 <TableBody>
                   {list.map((a) => {
                     const s = stats.get(a.id);
-                    const platforms = s ? [...s.platforms] : [];
+                    const devicePlatforms = s ? s.platforms : new Set<string>();
+                    const fbc = a.firebase_client_config ?? {};
+                    const configured = new Set<string>();
+                    if (fbc.android) configured.add("android");
+                    if (fbc.ios) configured.add("ios");
+                    // Union: show configured platforms (so they appear right after
+                    // uploading Firebase config) plus any with registered devices.
+                    const platforms = [...new Set([...configured, ...devicePlatforms])];
                     return (
                       <TableRow key={a.id} className="cursor-pointer">
                         <TableCell>
@@ -117,8 +125,12 @@ export default async function AppsPage() {
                           <div className="flex flex-wrap gap-1">
                             {platforms.length ? (
                               platforms.map((p) => (
-                                <Badge key={p} variant="secondary" className="capitalize">
-                                  {p}
+                                <Badge
+                                  key={p}
+                                  variant={devicePlatforms.has(p) ? "secondary" : "outline"}
+                                  className="capitalize"
+                                >
+                                  {p === "ios" ? "iOS" : p}
                                 </Badge>
                               ))
                             ) : (

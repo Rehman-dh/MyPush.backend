@@ -9,6 +9,7 @@ import {
   Send,
   Smartphone,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { sendNotificationAction, SendResult } from "@/app/actions";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Collapsible,
@@ -93,7 +94,13 @@ function AdvancedRow({ label, children }: { label: string; children: React.React
   );
 }
 
-export default function ComposeForm({ appId }: { appId: string }) {
+export default function ComposeForm({
+  appId,
+  subscribedCount = 0,
+}: {
+  appId: string;
+  subscribedCount?: number;
+}) {
   const [state, action] = useFormState(sendNotificationAction, initial);
 
   // ── content ──
@@ -237,6 +244,18 @@ export default function ComposeForm({ appId }: { appId: string }) {
         </div>
         <SubmitBtn mode={mode} />
       </div>
+
+      {subscribedCount === 0 && (
+        <Alert className="border-amber-500/50 text-amber-600 dark:text-amber-500 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-500">
+          <TriangleAlert className="h-4 w-4" />
+          <AlertTitle>No registered devices yet</AlertTitle>
+          <AlertDescription>
+            This app has no subscribed devices, so a send won&apos;t deliver to
+            anyone. Notifications start delivering once a device registers with the
+            SDK using this app&apos;s App Key.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* ── left: form ── */}
@@ -679,7 +698,9 @@ export default function ComposeForm({ appId }: { appId: string }) {
           {state.ok && state.status === "completed" && (
             <Alert>
               <AlertDescription>
-                Sent — {state.sent} delivered, {state.failed} failed.
+                {(state.sent ?? 0) === 0 && (state.failed ?? 0) === 0
+                  ? "No devices matched this target — nothing was delivered (empty audience)."
+                  : `Sent — ${state.sent} delivered, ${state.failed} failed.`}
               </AlertDescription>
             </Alert>
           )}
