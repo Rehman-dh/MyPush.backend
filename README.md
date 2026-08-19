@@ -54,8 +54,8 @@ So you don't have to run `flutterfire configure` / add `google-services.json` in
 ### 4. Flutter app
 Add the `my_push` package and initialize it with just the `public_app_key` + dashboard URL — no manual Firebase setup is needed in the app. Details: [my_push/README.md](my_push/README.md).
 
-### 5. Deploy (Vercel)
-Deploy `dashboard/` to Vercel. Set the env vars. The cron (`/api/cron/dispatch` every minute) is already declared in `vercel.json`.
+### 5. Deploy (self-hosted)
+The backend is deployed on a self-hosted server: **https://pushnotify.mycdnpro.com**. Build and run `dashboard/` (`npm run build && npm run start`) behind your reverse proxy, and set the env vars there. Scheduled sends are driven by Supabase `pg_cron` (`supabase/cron.sql`) calling `/api/cron/dispatch` every minute — no Vercel cron needed.
 
 ## Send test (curl)
 ```bash
