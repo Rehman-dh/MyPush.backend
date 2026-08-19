@@ -101,6 +101,15 @@ services:
       # an operator, never through a public /signup form.
       GOTRUE_DISABLE_SIGNUP: "true"
       GOTRUE_MAILER_AUTOCONFIRM: "true"
+      # MUST be set explicitly. GoTrue's user-lookup query filters on
+      # `aud = $3` using this value, defaulting to an EMPTY STRING when unset
+      # (not "authenticated" as you'd expect) — so with this unset, every
+      # login against a user row with the standard aud='authenticated'
+      # (which is what Supabase Cloud sets, and what migrated users carry)
+      # silently 400s as "Invalid login credentials", indistinguishable from
+      # a wrong password. Root-caused via GOTRUE_LOG_LEVEL=debug, which logs
+      # the exact SQL + bound params GoTrue runs.
+      GOTRUE_JWT_AUD: authenticated
 
   kong:
     image: kong:2.8.1
