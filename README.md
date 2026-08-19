@@ -97,3 +97,4 @@ curl -X POST http://localhost:3000/api/notifications \
 - Phase 2: in-app messages, email/SMS, A/B, confirmed-delivery, dedicated queue, saved segments, action buttons
 
 Full spec: [SPECS.md](SPECS.md).
+
