@@ -1,0 +1,49 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add SSH deploy key
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.LEON_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "${{ secrets.LEON_PORT }}" -H "${{ secrets.LEON_HOST }}" >> ~/.ssh/known_hosts
+
+      # --exclude .env keeps secrets out of the transfer AND — because rsync's
+      # --delete does not remove excluded files on the receiving side — is the
+      # only thing stopping every deploy from wiping the server's hand-written
+      # configuration (POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, etc.).
+      - name: Rsync code to server
+        run: |
+          rsync -az --delete \
+            --exclude .git --exclude node_modules --exclude .next --exclude .env \
+            --exclude backups \
+            -e "ssh -p ${{ secrets.LEON_PORT }} -i ~/.ssh/id_ed25519" \
+            ./ "${{ secrets.LEON_USER }}@${{ secrets.LEON_HOST }}:/srv/pushnotify/"
+
+      # ServerAliveInterval is load-bearing: `npm ci`/`next build` runs for
+      # minutes with no output, and without keepalives the idle session is
+      # dropped ("client_loop: send disconnect: Broken pipe", exit 255) even
+      # though the build itself is fine.
+      - name: Build & restart app (no-deps — never touches postgres/gotrue/kong)
+        run: |
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            -p "${{ secrets.LEON_PORT }}" -i ~/.ssh/id_ed25519 \
+            "${{ secrets.LEON_USER }}@${{ secrets.LEON_HOST }}" \
+            "cd /srv/pushnotify && docker compose up -d --no-deps --build app"
+
+      - name: Verify the service actually came up
+        run: |
+          ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            -p "${{ secrets.LEON_PORT }}" -i ~/.ssh/id_ed25519 \
+            "${{ secrets.LEON_USER }}@${{ secrets.LEON_HOST }}" \
+            "curl -fsS --retry 24 --retry-delay 5 --retry-connrefused http://127.0.0.1:3020/login > /dev/null"

@@ -1,0 +1,191 @@
+# ─────────────────────────────────────────────────────────────
+# Push Notification Service — self-hosted stack (leon)
+# ─────────────────────────────────────────────────────────────
+# Services:
+#   postgres   — database
+#   postgrest  — REST API (what @supabase/supabase-js talks to)
+#   gotrue     — authentication (email/password admin login only, no OAuth)
+#   kong       — API gateway (single entry point at :8000)
+#   app        — the Next.js dashboard + API
+#   cron       — every-minute dispatch trigger + nightly DB backup
+#
+# Pattern copied from DH-HRMS's self-hosted Supabase stack
+# (Devhouse-assets/Web.Frontend.DH-HRMS), simplified: no Realtime, no
+# Storage, no pgvector — this app doesn't use any of those.
+#
+# The app's code is unchanged — @supabase/supabase-js talks to kong (:8000),
+# which routes to self-hosted GoTrue / PostgREST. Just point
+# NEXT_PUBLIC_SUPABASE_URL at this server.
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  postgres:
+    # Plain Postgres 15 — NOT the official supabase/postgres image, which
+    # ships a pre-baked auth schema that conflicts with GoTrue v2.151's own
+    # internal migrations. GoTrue owns auth.* entirely; bootstrap.sh handles
+    # roles + schemas (same reasoning as DH-HRMS's setup).
+    image: postgres:15-alpine
+    container_name: pushnotify-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./supabase:/migrations:ro
+      - ./scripts/bootstrap.sh:/docker-entrypoint-initdb.d/00-bootstrap.sh:ro
+    # No host port published — no external tool needs direct DB access here;
+    # use `docker compose exec postgres psql` for maintenance.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrator:
+    image: postgres:15-alpine
+    container_name: pushnotify-migrator
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./supabase:/migrations:ro
+      - ./scripts/migrate.sh:/migrate.sh:ro
+    entrypoint: ["sh", "/migrate.sh"]
+
+  postgrest:
+    image: postgrest/postgrest:v12.0.1
+    container_name: pushnotify-postgrest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+
+  gotrue:
+    image: supabase/gotrue:v2.151.0
+    container_name: pushnotify-gotrue
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${SUPABASE_URL}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      GOTRUE_SITE_URL: ${SUPABASE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${SUPABASE_URL},${SUPABASE_URL}/*
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      # Admin-only tool — no public signup flow, no OAuth. Accounts are
+      # created directly in the DB (migrated from the live instance) or by
+      # an operator, never through a public /signup form.
+      GOTRUE_DISABLE_SIGNUP: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+
+  kong:
+    image: kong:2.8.1
+    container_name: pushnotify-kong
+    restart: unless-stopped
+    depends_on:
+      - postgrest
+      - gotrue
+    environment:
+      KONG_DATABASE: "off"
+      # Kong 2.x does NOT substitute env vars in declarative config, so we
+      # pre-render kong.yml with sed on every start (kong-entrypoint.sh).
+      KONG_DECLARATIVE_CONFIG: /tmp/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl
+      # 16 cores on leon would otherwise spawn 16 nginx workers here (DH-HRMS
+      # measured ~2.7GB from that alone) — cap it, this gateway is very low
+      # traffic for a single small admin dashboard.
+      KONG_NGINX_WORKER_PROCESSES: "2"
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+    volumes:
+      - ./deploy/kong.yml:/home/kong/kong.template.yml:ro
+      - ./scripts/kong-entrypoint.sh:/kong-entrypoint.sh:ro
+    entrypoint: ["sh", "/kong-entrypoint.sh"]
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  app:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+    container_name: pushnotify-app
+    restart: unless-stopped
+    depends_on:
+      - kong
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY}
+      CRON_SECRET: ${CRON_SECRET}
+      ADMIN_SETUP_TOKEN: ${ADMIN_SETUP_TOKEN}
+    ports:
+      - "127.0.0.1:3020:3000"
+    mem_limit: 512m
+    cpus: 1.0
+
+  cron:
+    image: alpine:3.19
+    container_name: pushnotify-cron
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      CRON_SECRET: ${CRON_SECRET}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PREFIX: pushnotify
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    entrypoint: >
+      sh -c "
+        apk add --no-cache postgresql-client aws-cli dcron curl &&
+        echo '* * * * * /usr/bin/curl -fsS -X POST -H \"Authorization: Bearer $$CRON_SECRET\" http://app:3000/api/cron/dispatch >> /var/log/dispatch.log 2>&1' > /etc/crontabs/root &&
+        echo '30 3 * * * sh /backup.sh >> /var/log/backup.log 2>&1' >> /etc/crontabs/root &&
+        touch /var/log/dispatch.log /var/log/backup.log &&
+        crond -f -l 8
+      "
+
+volumes:
+  postgres-data:
+    driver: local
