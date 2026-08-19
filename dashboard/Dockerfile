@@ -30,6 +30,10 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
 RUN --mount=type=cache,target=/app/.next/cache \
     npm run build
 
+# This app ships no public/ folder (no static assets committed) — ensure one
+# exists so the runner stage's COPY below doesn't fail on a missing dir.
+RUN mkdir -p /app/public
+
 # ── Stage 3: runtime ──────────────────────────
 FROM node:20-alpine AS runner
 WORKDIR /app
