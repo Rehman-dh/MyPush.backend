@@ -44,13 +44,14 @@ export interface NotificationRow {
   created_at: string;
 }
 
-type TabKey = "all" | "sent" | "scheduled" | "drafts";
+type TabKey = "all" | "sent" | "failed" | "scheduled" | "drafts";
 type SortKey = "sent_at" | "created_at";
 type SortDir = "asc" | "desc";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "sent", label: "Sent" },
+  { key: "failed", label: "Failed" },
   { key: "scheduled", label: "Scheduled" },
   { key: "drafts", label: "Drafts" },
 ];
@@ -76,6 +77,10 @@ function isDispatched(status: string) {
 }
 function isScheduled(status: string) {
   return status === "scheduled" || status === "scheduling";
+}
+function isFailed(n: NotificationRow) {
+  // The whole send failed, or it completed but some devices failed.
+  return n.status === "failed" || (n.failed_count ?? 0) > 0;
 }
 
 function sentAtOf(n: NotificationRow): string | null {
@@ -138,6 +143,7 @@ export default function NotificationsClient({
     () => ({
       all: notifications.length,
       sent: notifications.filter((n) => isDispatched(n.status)).length,
+      failed: notifications.filter(isFailed).length,
       scheduled: notifications.filter((n) => isScheduled(n.status)).length,
       drafts: 0,
     }),
@@ -147,6 +153,7 @@ export default function NotificationsClient({
   const rows = useMemo(() => {
     let list = notifications;
     if (tab === "sent") list = list.filter((n) => isDispatched(n.status));
+    else if (tab === "failed") list = list.filter(isFailed);
     else if (tab === "scheduled") list = list.filter((n) => isScheduled(n.status));
     else if (tab === "drafts") list = [];
 
