@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase";
+import { getSdkVersions } from "@/lib/sdk-versions-store";
 import SetupInstructions from "./SetupInstructions";
+import SdkVersionsForm from "./SdkVersionsForm";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +11,14 @@ export default async function SetupPage({
 }: {
   params: { appId: string };
 }) {
-  const { data: app } = await supabaseAdmin()
-    .from("apps")
-    .select("id, name, public_app_key, firebase_client_config")
-    .eq("id", params.appId)
-    .maybeSingle();
+  const [{ data: app }, versions] = await Promise.all([
+    supabaseAdmin()
+      .from("apps")
+      .select("id, name, public_app_key, firebase_client_config")
+      .eq("id", params.appId)
+      .maybeSingle(),
+    getSdkVersions(),
+  ]);
 
   if (!app) notFound();
 
@@ -34,9 +39,12 @@ export default async function SetupPage({
       <SetupInstructions
         appId={app.id}
         appKey={app.public_app_key}
+        versions={versions}
         hasAndroidConfig={!!fbc.android}
         hasIosConfig={!!fbc.ios}
       />
+
+      <SdkVersionsForm versions={versions} />
     </div>
   );
 }
