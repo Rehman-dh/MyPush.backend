@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 import {
   ArrowDown,
   ArrowUp,
@@ -42,13 +44,14 @@ export interface NotificationRow {
   created_at: string;
 }
 
-type TabKey = "all" | "sent" | "scheduled" | "drafts";
+type TabKey = "all" | "sent" | "failed" | "scheduled" | "drafts";
 type SortKey = "sent_at" | "created_at";
 type SortDir = "asc" | "desc";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "all", label: "All" },
   { key: "sent", label: "Sent" },
+  { key: "failed", label: "Failed" },
   { key: "scheduled", label: "Scheduled" },
   { key: "drafts", label: "Drafts" },
 ];
@@ -74,6 +77,10 @@ function isDispatched(status: string) {
 }
 function isScheduled(status: string) {
   return status === "scheduled" || status === "scheduling";
+}
+function isFailed(n: NotificationRow) {
+  // The whole send failed, or it completed but some devices failed.
+  return n.status === "failed" || (n.failed_count ?? 0) > 0;
 }
 
 function sentAtOf(n: NotificationRow): string | null {
@@ -106,11 +113,37 @@ export default function NotificationsClient({
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("sent_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const router = useRouter();
+
+  // Live updates: subscribe to this app's notification row changes over Supabase
+  // Realtime. On any insert/update (e.g. a send flipping sending→completed, or
+  // sent/failed/clicked counts ticking up) we re-pull the server-rendered list.
+  // Requires the RLS select policy + realtime publication in supabase/schema.sql.
+  useEffect(() => {
+    const supabase = supabaseBrowser();
+    const channel = supabase
+      .channel(`notifications:${appId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `app_id=eq.${appId}`,
+        },
+        () => router.refresh()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [appId, router]);
 
   const counts = useMemo(
     () => ({
       all: notifications.length,
       sent: notifications.filter((n) => isDispatched(n.status)).length,
+      failed: notifications.filter(isFailed).length,
       scheduled: notifications.filter((n) => isScheduled(n.status)).length,
       drafts: 0,
     }),
@@ -120,6 +153,7 @@ export default function NotificationsClient({
   const rows = useMemo(() => {
     let list = notifications;
     if (tab === "sent") list = list.filter((n) => isDispatched(n.status));
+    else if (tab === "failed") list = list.filter(isFailed);
     else if (tab === "scheduled") list = list.filter((n) => isScheduled(n.status));
     else if (tab === "drafts") list = [];
 
