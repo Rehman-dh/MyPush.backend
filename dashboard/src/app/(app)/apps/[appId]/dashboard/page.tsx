@@ -48,22 +48,31 @@ export default async function DashboardPage({
   params: { appId: string };
 }) {
   const db = supabaseAdmin();
-  const [{ data: notifications }, { data: devices }] = await Promise.all([
+  // Device totals are COUNT queries (head:true → no rows pulled). This scales to
+  // a large audience; selecting every device row just to count would not.
+  const [{ data: notifications }, devCount, subCount] = await Promise.all([
     db
       .from("notifications")
       .select("sent_count, failed_count, clicked_count, created_at, scheduled_at")
       .eq("app_id", params.appId),
-    db.from("devices").select("subscribed").eq("app_id", params.appId),
+    db
+      .from("devices")
+      .select("*", { count: "exact", head: true })
+      .eq("app_id", params.appId),
+    db
+      .from("devices")
+      .select("*", { count: "exact", head: true })
+      .eq("app_id", params.appId)
+      .eq("subscribed", true),
   ]);
 
   const notifs = notifications ?? [];
-  const devs = devices ?? [];
+  const totalDevices = devCount.count ?? 0;
+  const totalSubscribed = subCount.count ?? 0;
 
   // Stat totals
   const totalSent = notifs.reduce((a, n) => a + (n.sent_count ?? 0), 0);
   const totalClicked = notifs.reduce((a, n) => a + (n.clicked_count ?? 0), 0);
-  const totalDevices = devs.length;
-  const totalSubscribed = devs.filter((d) => d.subscribed).length;
   const avgCtr = totalSent > 0 ? (totalClicked / totalSent) * 100 : 0;
 
   // Daily series over the last RANGE_DAYS days, keyed by created_at (see plan:

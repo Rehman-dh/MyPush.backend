@@ -130,3 +130,31 @@ alter table public.devices       enable row level security;
 alter table public.notifications enable row level security;
 alter table public.events        enable row level security;
 -- (koi policy nahi = default deny for anon; service_role RLS bypass karta hai.)
+
+-- ─────────────────────────────────────────────────────────────
+-- Realtime: the dashboard subscribes to notification row changes for live send
+-- progress (sending→completed, sent/failed/clicked ticking up). Supabase
+-- postgres_changes enforces RLS against the subscriber's role, so the logged-in
+-- dashboard user (authenticated) needs SELECT on notifications, and the table
+-- must be in the supabase_realtime publication.
+--
+-- Single-owner dashboard → exposing all notifications to any authenticated user
+-- is fine. devices/events are intentionally NOT exposed to the browser (high
+-- churn at scale — those are polled via the service-role API instead).
+-- ─────────────────────────────────────────────────────────────
+drop policy if exists "dashboard reads notifications" on public.notifications;
+create policy "dashboard reads notifications"
+  on public.notifications for select to authenticated using (true);
+
+-- Add notifications to the realtime publication (guarded = idempotent).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'notifications'
+  ) then
+    alter publication supabase_realtime add table public.notifications;
+  end if;
+end $$;

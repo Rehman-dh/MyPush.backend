@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 import {
   ArrowDown,
   ArrowUp,
@@ -106,6 +108,31 @@ export default function NotificationsClient({
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("sent_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const router = useRouter();
+
+  // Live updates: subscribe to this app's notification row changes over Supabase
+  // Realtime. On any insert/update (e.g. a send flipping sending→completed, or
+  // sent/failed/clicked counts ticking up) we re-pull the server-rendered list.
+  // Requires the RLS select policy + realtime publication in supabase/schema.sql.
+  useEffect(() => {
+    const supabase = supabaseBrowser();
+    const channel = supabase
+      .channel(`notifications:${appId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "notifications",
+          filter: `app_id=eq.${appId}`,
+        },
+        () => router.refresh()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [appId, router]);
 
   const counts = useMemo(
     () => ({
