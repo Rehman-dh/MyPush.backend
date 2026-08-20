@@ -11,7 +11,7 @@
  */
 export const SDK_VERSIONS = {
   /** Flutter git tag on github.com/Rehman-dh/MyPush.Package (used as `ref:`). */
-  flutter: "0.3.1",
+  flutter: "0.3.2",
   /** Android JitPack tag on github.com/Rehman-dh/my_push_android. */
   android: "0.2.0",
 } as const;

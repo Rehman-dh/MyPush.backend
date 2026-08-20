@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Radio } from "lucide-react";
 import { supabaseAdmin } from "@/lib/supabase";
 import CreateAppForm from "./CreateAppForm";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { ThemeToggle } from "@/components/theme-toggle";
 import SignOutButton from "@/app/(app)/SignOutButton";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,7 @@ export default async function AppsPage() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 p-4 md:p-6">
+        <AutoRefresh interval={10000} />
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Apps</h1>

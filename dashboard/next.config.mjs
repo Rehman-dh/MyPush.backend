@@ -7,6 +7,11 @@ const nextConfig = {
   // firebase-admin ko server bundle mein external rakho (native deps)
   experimental: {
     serverComponentsExternalPackages: ["firebase-admin"],
+    // Don't reuse a cached RSC payload on soft navigation — data pages are
+    // force-dynamic and device rows change out-of-band (SDK registration), so
+    // the client Router Cache would otherwise show stale/empty data until a
+    // hard refresh. dynamic: 0 makes every navigation refetch fresh.
+    staleTimes: { dynamic: 0, static: 0 },
   },
 };
 

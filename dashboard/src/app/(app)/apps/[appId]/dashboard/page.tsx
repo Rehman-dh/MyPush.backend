@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DashboardCharts } from "./DashboardCharts";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,7 @@ export default async function DashboardPage({
 
   return (
     <div className="grid gap-4">
+      <AutoRefresh interval={10000} />
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">

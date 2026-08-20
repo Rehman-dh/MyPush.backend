@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import NotificationsClient, { NotificationRow } from "./NotificationsClient";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,12 @@ export default async function NotificationsPage({
     .limit(100);
 
   return (
-    <NotificationsClient
-      notifications={(rows ?? []) as NotificationRow[]}
-      appId={params.appId}
-    />
+    <>
+      <AutoRefresh interval={10000} />
+      <NotificationsClient
+        notifications={(rows ?? []) as NotificationRow[]}
+        appId={params.appId}
+      />
+    </>
   );
 }
