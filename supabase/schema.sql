@@ -158,3 +158,21 @@ begin
     alter publication supabase_realtime add table public.notifications;
   end if;
 end $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- SDK versions shown on the dashboard Setup page. Single-row table so a new
+-- SDK release only needs a value change here (from the dashboard field) — no
+-- code deploy. The app also ships a code fallback (lib/sdk-versions.ts) if the
+-- row is missing. Values MUST match a real published tag (Flutter git tag /
+-- Android JitPack tag).
+-- ─────────────────────────────────────────────────────────────
+create table if not exists public.sdk_versions (
+  id         boolean primary key default true,
+  flutter    text not null default '0.3.2',
+  android    text not null default '0.2.0',
+  updated_at timestamptz not null default now(),
+  constraint sdk_versions_singleton check (id)
+);
+insert into public.sdk_versions (id) values (true) on conflict (id) do nothing;
+alter table public.sdk_versions enable row level security;
+-- service-role only (dashboard reads/writes via the API layer); no anon policy.

@@ -273,3 +273,38 @@ export async function sendNotificationAction(
     return { ok: false, error: e.message };
   }
 }
+
+export interface UpdateSdkVersionsResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Update the SDK versions the Setup page renders. Global (one row for all apps)
+ * and takes effect immediately — no dashboard deploy. The value must match a
+ * real published tag (Flutter git tag / Android JitPack tag).
+ */
+export async function updateSdkVersionsAction(
+  _prev: unknown,
+  formData: FormData
+): Promise<UpdateSdkVersionsResult> {
+  try {
+    await requireAuth();
+    const flutter = String(formData.get("flutter") || "").trim();
+    const android = String(formData.get("android") || "").trim();
+    if (!flutter || !android) {
+      return { ok: false, error: "Both versions are required" };
+    }
+
+    const { error } = await supabaseAdmin()
+      .from("sdk_versions")
+      .upsert(
+        { id: true, flutter, android, updated_at: new Date().toISOString() },
+        { onConflict: "id" }
+      );
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Failed to update versions" };
+  }
+}

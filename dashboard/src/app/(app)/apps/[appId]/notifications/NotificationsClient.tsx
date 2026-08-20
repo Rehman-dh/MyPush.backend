@@ -79,8 +79,10 @@ function isScheduled(status: string) {
   return status === "scheduled" || status === "scheduling";
 }
 function isFailed(n: NotificationRow) {
-  // The whole send failed, or it completed but some devices failed.
-  return n.status === "failed" || (n.failed_count ?? 0) > 0;
+  // "Failed" = delivered to nobody: the whole dispatch failed, or it ran but
+  // every recipient failed (sent_count 0 with failures). A partial send that
+  // reached at least one device counts as Delivered, not Failed.
+  return n.status === "failed" || (n.sent_count === 0 && (n.failed_count ?? 0) > 0);
 }
 
 function sentAtOf(n: NotificationRow): string | null {
@@ -297,10 +299,12 @@ export default function NotificationsClient({
                           <span
                             className={cn(
                               "h-2 w-2 rounded-full",
-                              statusDot[n.status] ?? "bg-muted-foreground"
+                              isFailed(n)
+                                ? "bg-red-500"
+                                : statusDot[n.status] ?? "bg-muted-foreground"
                             )}
                           />
-                          {statusLabel[n.status] ?? n.status}
+                          {isFailed(n) ? "Failed" : statusLabel[n.status] ?? n.status}
                         </span>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
