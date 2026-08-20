@@ -85,6 +85,7 @@ export default function SetupInstructions({
         <TabsList>
           <TabsTrigger value="flutter">Flutter</TabsTrigger>
           <TabsTrigger value="android">Android</TabsTrigger>
+          <TabsTrigger value="ios">iOS</TabsTrigger>
         </TabsList>
 
         {/* ── Flutter ── */}
@@ -230,6 +231,126 @@ MyPush.setTags(mapOf("plan" to "premium", "city" to "lahore"))`}
               <code>initialize(...)</code> for zero-config (set the Firebase
               config in the dashboard first).
             </p>
+          </Step>
+        </TabsContent>
+
+        {/* ── iOS (native Swift) ── */}
+        <TabsContent value="ios" className="grid gap-6 pt-2">
+          <Step n={1} title="Add the Swift package">
+            <p>
+              In Xcode: <strong>File → Add Package Dependencies…</strong>, paste
+              the repo URL, and add the <code>MyPush</code> library to your app
+              target. (Private repo is fine — sign in under Xcode → Settings →
+              Accounts.)
+            </p>
+            <CodeBlock
+              language="text"
+              code={`https://github.com/talhastackdev/My_Push_Notification_Swift.git`}
+            />
+          </Step>
+
+          <Step n={2} title="Enable capabilities">
+            <p>
+              On the app target → <strong>Signing &amp; Capabilities</strong>,
+              add <strong>Push Notifications</strong> and{" "}
+              <strong>Background Modes → Remote notifications</strong>.
+            </p>
+          </Step>
+
+          <Step n={3} title="Firebase is owned by your app">
+            <p>
+              Unlike the Flutter/Android zero-config path, the native iOS SDK
+              expects your app to own Firebase: add your{" "}
+              <code>GoogleService-Info.plist</code>, link{" "}
+              <code>FirebaseMessaging</code>, and call{" "}
+              <code>FirebaseApp.configure()</code>. MyPush only receives.
+            </p>
+          </Step>
+
+          <Step n={4} title="Wire up the app delegate">
+            <p>
+              The app owns Firebase and forwards the FCM token to MyPush, which
+              handles device registration and foreground/tap notifications.
+            </p>
+            <CodeBlock
+              language="swift"
+              code={`import UIKit
+import FirebaseCore
+import FirebaseMessaging
+import MyPush
+
+final class AppPushDelegate: NSObject, UIApplicationDelegate, MessagingDelegate {
+    func application(_ app: UIApplication,
+                     didFinishLaunchingWithOptions o: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        if FirebaseApp.app() == nil { FirebaseApp.configure() }
+        Messaging.messaging().delegate = self
+        UNUserNotificationCenter.current().delegate = MyPush.shared   // foreground + tap
+        MyPush.shared.registerForPush()                              // ask for APNs token
+        return true
+    }
+
+    func application(_ app: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken token: Data) {
+        Messaging.messaging().apnsToken = token
+    }
+
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        if let fcmToken { MyPush.shared.register(token: fcmToken) }   // registers the device
+    }
+}`}
+            />
+          </Step>
+
+          <Step n={5} title="Configure MyPush at launch">
+            <p>
+              Pass this app&apos;s App Key and your dashboard URL:
+            </p>
+            <CodeBlock
+              language="swift"
+              code={`@main
+struct MyApp: App {
+    @UIApplicationDelegateAdaptor(AppPushDelegate.self) private var push
+    init() {
+        MyPush.shared.configure(appKey: "${appKey}",
+                                baseURL: "https://pushnotify.mycdnpro.com")
+    }
+    var body: some Scene { WindowGroup { ContentView() } }
+}`}
+            />
+          </Step>
+
+          <Step n={6} title="Request permission (optional timing)">
+            <p>
+              After your own notification-permission prompt, call{" "}
+              <code>MyPush.shared.registerForPush()</code> so the device
+              registers the moment the user allows — instead of on the next
+              launch.
+            </p>
+          </Step>
+
+          <Step n={7} title="API reference">
+            <ul className="ml-4 list-disc space-y-1">
+              <li>
+                <code>MyPush.shared.configure(appKey:baseURL:)</code> — call once
+                at launch.
+              </li>
+              <li>
+                <code>MyPush.shared.register(token:)</code> — feed it the FCM
+                token from Firebase.
+              </li>
+              <li>
+                <code>MyPush.shared.registerForPush()</code> — request the APNs
+                token.
+              </li>
+              <li>
+                <code>MyPush.shared</code> is the{" "}
+                <code>UNUserNotificationCenterDelegate</code> (foreground
+                banners, opens <code>launch_url</code> on tap).
+              </li>
+              <li>
+                <code>MyPush.shared.deviceId</code> — the persisted device id.
+              </li>
+            </ul>
           </Step>
         </TabsContent>
       </Tabs>
