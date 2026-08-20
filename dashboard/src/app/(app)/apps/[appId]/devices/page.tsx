@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -28,6 +29,7 @@ export default async function DevicesPage({
 
   return (
     <div className="grid gap-4">
+      <AutoRefresh interval={10000} />
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Devices</h1>
         <p className="text-sm text-muted-foreground">
