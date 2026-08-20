@@ -20,6 +20,6 @@ export type SdkVersions = {
 };
 
 export const SDK_VERSIONS: SdkVersions = {
-  flutter: "0.3.2",
+  flutter: "0.3.3",
   android: "0.2.0",
 };
